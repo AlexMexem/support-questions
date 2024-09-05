@@ -1,6 +1,18 @@
 {
   "questions": [
     {
+      "id": 1,
+      "URL": "https://www.ibkr.com/faq?id=402539460",
+      "Category1": "Funding & Asset Transfers",
+      "Category2": "Cash Deposits",
+      "Category3": "Deposit Currencies",
+      "Question ": "How to deposit SEK to Interactive Brokers?",
+      "Answer (TEXT)": "MEXEM permits the deposit of Swedish Krona \\(SEK\\) currency  by either Domestic Transfer via Bankgiro \\(commonly used within Sweden\\) or  International Bank Transfer \\(Utlandsbetalnig\\) via SWIFT/RTGS \\( if your bank account is located outside of Sweden \\) .\n\nThe MEXEM bank routing instruction will be displayed after you [complete the deposit notification](https://www.interactivebrokers.ie/lib/cstools/faq/#/content/27276866) in Client Portal.\n\n\n**Additional Information**\n\n* [How do I transfer funds to MEXEM?](https://www.interactivebrokers.ie/lib/cstools/faq/#/content/27276866)\n* [How to Deposit SEK to MEXEM?](https://MEXEM.info/article/4721)",
+      "Answer (HTML)": "<p>MEXEM permits the deposit of Swedish Krona (SEK) currency&nbsp; by either Domestic Transfer via Bankgiro (commonly used within Sweden) or &nbsp;International Bank Transfer (Utlandsbetalnig) via SWIFT/RTGS ( if your bank account is located outside of Sweden ) .</p><p>The MEXEM bank routing instruction will be displayed after you <a href=\"https://www.interactivebrokers.com/lib/cstools/faq/#/content/27276866\">complete the deposit notification</a> in Client Portal.</p><p><strong>Additional Information</strong></p><ul><li><a href=\"https://www.interactivebrokers.com/lib/cstools/faq/#/content/27276866\">How do I transfer funds to MEXEM?</a></li><li><a href=\"https://MEXEM.info/article/4721\">How to Deposit SEK to MEXEM?</a></li></ul>",
+      "checkedComplete": false,
+      "canDownload": false
+    },
+    {
       "id": 2,
       "URL": "https://www.ibkr.com/faq?id=38441340",
       "Category1": "Funding & Asset Transfers",
@@ -10,7 +22,7 @@
       "Answer (TEXT)": "Unfortunately it is not possible to gift stocks to family members or friends.",
       "Answer (HTML)": "<p>Unfortunately it is not possible to gift stocks to family members or friends.</p>",
       "checkedComplete": true,
-      "canDownload": true
+      "canDownload": false
     },
     {
       "id": 3,

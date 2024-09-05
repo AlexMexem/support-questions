@@ -199,6 +199,7 @@
                     });
             };
 
+            // Function to display questions
             window.displayQuestions = function (data) {
                 const container = document.getElementById('questionsContainer');
                 container.innerHTML = ''; // Clear existing content
@@ -255,6 +256,32 @@
                 });
             };
 
+
+            // Function to mark a question as completed
+            window.markAsCompleted = function (file, id) {
+                const isChecked = document.getElementById(`check${id}`).checked;
+
+                fetch('/mark-as-completed', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ file, id, checkedComplete: isChecked })
+                }).then(response => response.text()).then(data => {
+                    showToast(data);
+
+                    // Update the local data to reflect the changes without a page refresh
+                    const questionIndex = questionsData.findIndex(q => q.id === id);
+                    if (questionIndex !== -1) {
+                        questionsData[questionIndex].checkedComplete = isChecked; // Update the local state
+                    }
+
+                    applyFilter(); // Reapply the filter to update the view
+                }).catch(error => {
+                    showToast('Error updating completion status', 'danger');
+                });
+            };
+
             // Function to apply filter
             window.applyFilter = function () {
                 const showOnlyIncomplete = document.getElementById('filterCheckbox').checked;
@@ -264,7 +291,7 @@
                     filteredQuestions = questionsData.filter(q => !q['checkedComplete']);
                 } else {
                     // Show all questions if the checkbox is not checked
-                    filteredQuestions = questionsData;
+                    filteredQuestions = questionsData.slice(); // Use slice() to create a shallow copy
                 }
 
                 displayQuestions(filteredQuestions); // Display filtered or all questions
@@ -328,21 +355,20 @@
                 });
             };
 
-            window.markAsCompleted = function (file, id) {
-                const isChecked = document.getElementById(`check${id}`).checked;
-                changedQuestions.add(id); // Track the changed question
 
-                fetch('/save-progress', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ file, id: id, completed: isChecked })
-                }).then(response => response.text()).then(data => {
-                    showToast('Progress saved');
-                }).catch(error => {
-                    showToast('Error saving progress', 'danger');
-                });
+            // Function to apply filter
+            window.applyFilter = function () {
+                const showOnlyIncomplete = document.getElementById('filterCheckbox').checked;
+
+                if (showOnlyIncomplete) {
+                    // Filter out questions that are marked as complete
+                    filteredQuestions = questionsData.filter(q => !q['checkedComplete']);
+                } else {
+                    // Show all questions if the checkbox is not checked
+                    filteredQuestions = questionsData.slice(); // Use slice() to create a shallow copy
+                }
+
+                displayQuestions(filteredQuestions); // Display filtered or all questions
             };
 
             window.downloadCSV = function () {

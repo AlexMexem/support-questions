@@ -210,6 +210,23 @@ app.post("/reset-download-status", async (req, res) => {
   }
 });
 
+// Route to mark a question as completed
+app.post("/mark-as-completed", async (req, res) => {
+  const { file, id, checkedComplete } = req.body;
+  const db = await getDatabase(file);
+
+  // Find the question by its ID
+  const question = db.data.questions.find((q) => q.id === id);
+  if (question) {
+    // Update the checkedComplete status
+    question.checkedComplete = checkedComplete;
+    await db.write(); // Save changes to the database
+    res.send(`Completion status updated for question ID ${id} in ${file}.json`);
+  } else {
+    res.status(404).send("Question not found.");
+  }
+});
+
 // Route to save progress for a specific file
 app.post("/save-progress", async (req, res) => {
   const { file, id, completed } = req.body;
