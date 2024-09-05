@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV Editor</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
+    <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
+    <!-- Tailwind CSS CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+
+</head>
+
+<body class="bg-gray-100">
+    <div class="container mx-auto mt-10 p-4 bg-white rounded shadow">
+        <h1 class="text-2xl font-bold text-center mb-6">Editable Questions and Answers</h1>
+
+        <!-- Save, Export, Filter, and Delete Options -->
+        <div class="flex justify-center items-center space-x-4 mb-6">
+            <button class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" onclick="saveChanges()">Save
+                Changes</button>
+            <button class="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600" onclick="downloadCSV()">Export
+                CSV</button>
+            <button class="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600" onclick="deleteDatabase()">Delete
+                Database</button>
+            <div class="flex items-center ml-4">
+                <input id="filterCheckbox" type="checkbox" class="form-checkbox h-5 w-5 text-blue-600"
+                    onchange="applyFilter()">
+                <label for="filterCheckbox" class="ml-2 text-gray-700">Show Only Incomplete Questions</label>
+            </div>
+        </div>
+
+        <!-- Loader -->
+        <div id="loader" class="flex justify-center mb-6 hidden">
+            <div class="loader ease-linear rounded-full border-8 border-t-8 border-gray-200 h-16 w-16"></div>
+        </div>
+
+        <!-- Dropdown for selecting CSV file -->
+        <div class="mb-6">
+            <select id="csvSelector" class="block w-full p-2 border border-gray-300 rounded"
+                onchange="loadSelectedCSV()">
+                <!-- Dynamically populated options will go here -->
+            </select>
+        </div>
+
+        <!-- File Input for CSV Upload -->
+        <form id="uploadForm" enctype="multipart/form-data" class="mb-6">
+            <input type="file" name="csvfile" class="block w-full p-2 border border-gray-300 rounded mb-2"
+                accept=".csv">
+            <button type="submit" class="w-full px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-800">Upload
+                CSV</button>
+        </form>
+
+        <!-- Pagination Controls -->
+        <div id="paginationControls" class="flex justify-between items-center mb-6">
+            <button class="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
+                onclick="prevPage()">Previous</button>
+            <span id="paginationInfo" class="text-gray-700"></span>
+            <button class="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
+                onclick="nextPage()">Next</button>
+        </div>
+
+        <!-- Questions Container -->
+        <div id="questionsContainer" class="space-y-4">
+            <!-- Questions will be loaded here -->
+        </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div class="fixed bottom-4 right-4 p-4 bg-gray-700 text-white rounded shadow-lg hidden" id="toast">
+        <div class="flex justify-between items-center">
+            <span id="toast-body">Notification message here.</span>
+            <button onclick="this.parentElement.parentElement.classList.add('hidden')">&times;</button>
+        </div>
+    </div>
+
+    <!-- Load JavaScript dependencies -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    <!-- Heroicons CDN -->
+    <script src="https://unpkg.com/@heroicons/react/solid"></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            let editors = {}; // Store all Quill editor instances
+            let questionsData = []; // Store all questions data for filtering
+            let filteredQuestions = []; // Store filtered questions separately
+            let currentPage = 1; // Current page number for pagination
+            const pageSize = 10; // Number of questions per page
+            let totalQuestions = 0; // Total number of questions
+            const changedQuestions = new Set(); // Track changed questions by their IDs
+            const recycleBin = []; // Store deleted questions temporarily
+
+            // Handle file upload
+            document.getElementById('uploadForm').addEventListener('submit', function (event) {
+                event.preventDefault(); // Prevent default form submission
+                toggleLoader(true); // Show loader
+
+                const formData = new FormData(this);
+
+                fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                })
+                    .then(response => response.text())
+                    .then(data => {
+                        showToast(data); // Show success message
+                        toggleLoader(false); // Hide loader
+                        loadCSVFiles(); // Refresh the list of CSV files after upload
+                    })
+                    .catch(error => {
+                        showToast('Error uploading file', 'danger');
+                        toggleLoader(false); // Hide loader
+                    });
+            });
+
+            // Function to delete a specific question
+            window.deleteQuestion = function (file, id) {
+                if (confirm('Are you sure you want to delete this question?')) {
+                    fetch('/delete-question', {
+                        method: 'DELETE',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ file, id })
+                    })
+                        .then(response => response.text())
+                        .then(data => {
+                            showToast(data);
+                            loadSelectedCSV(); // Refresh data after deletion
+                        })
+                        .catch(error => {
+                            showToast('Error deleting question', 'danger');
+                        });
+                }
+            };
+
+            // Function to delete the entire database
+            window.deleteDatabase = function () {
+                const selectedFile = document.getElementById('csvSelector').value;
+                if (confirm('Are you sure you want to delete the entire database?')) {
+                    fetch(`/delete-database?file=${selectedFile}`, {
+                        method: 'DELETE'
+                    })
+                        .then(response => response.text())
+                        .then(data => {
+                            showToast(data);
+                            location.reload(); // Reload the page to update the state
+                        })
+                        .catch(error => {
+                            showToast('Error deleting database', 'danger');
+                        });
+                }
+            };
+
+            // Function to restore a question from the recycle bin
+            window.restoreQuestion = function (id) {
+                const question = recycleBin.find(q => q.id === id);
+                if (question) {
+                    recycleBin.splice(recycleBin.indexOf(question), 1); // Remove from recycle bin
+                    questionsData.push(question); // Restore to questions data
+                    displayQuestions(questionsData); // Refresh the display
+                    showToast(`Question ID ${id} restored.`);
+                    updateRecycleBinDisplay();
+                }
+            };
+
+            // Function to update the recycle bin display
+            function updateRecycleBinDisplay() {
+                const recycleBinList = document.getElementById('recycleBinList');
+                recycleBinList.innerHTML = '';
+
+                recycleBin.forEach(question => {
+                    const li = document.createElement('li');
+                    li.className = 'list-group-item';
+                    li.innerHTML = `Question ID ${question.id}: ${question.Question} 
+                        <button class="btn btn-link text-success" onclick="restoreQuestion(${question.id})">Restore</button>`;
+                    recycleBinList.appendChild(li);
+                });
+            }
+
+            // Function to load selected CSV file
+            window.loadSelectedCSV = function () {
+                const selectedFile = document.getElementById('csvSelector').value;
+                toggleLoader(true); // Show loader
+                fetch(`/questions?file=${selectedFile}&page=${currentPage}&pageSize=${pageSize}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        questionsData = data.questions; // Store all questions data
+                        totalQuestions = data.total; // Store the total number of questions
+                        applyFilter(); // Apply filter after loading questions
+                        toggleLoader(false); // Hide loader
+                    }).catch(error => {
+                        showToast('Error loading data', 'danger');
+                        toggleLoader(false); // Hide loader
+                    });
+            };
+
+            window.displayQuestions = function (data) {
+                const container = document.getElementById('questionsContainer');
+                container.innerHTML = ''; // Clear existing content
+                editors = {}; // Reset the editors object
+
+                data.forEach((question) => {
+                    const canDownloadChecked = question.canDownload ? 'checked' : ''; // Determine if checkbox should be checked
+
+                    const questionHTML = `
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h5>Question ${question.id}: ${question['Question'] || 'No Title Provided'}</h5>
+                        <input type="checkbox" id="markForDownload${question.id}" class="ml-3" onchange="markForDownload('${document.getElementById('csvSelector').value}', ${question.id})" ${canDownloadChecked}> Mark for Download
+                        <input type="checkbox" id="check${question.id}" class="ml-3" onchange="markAsCompleted('${document.getElementById('csvSelector').value}', ${question.id})" ${question['checkedComplete'] ? 'checked' : ''}> Mark as Completed
+                        <button class="btn btn-danger btn-sm float-end" onclick="deleteQuestion('${document.getElementById('csvSelector').value}', ${question.id})">Delete</button>
+                    </div>
+                    <div class="card-body">
+                        <div id="editor${question.id}" style="height: 200px;">${question['Answer (HTML)'] || ''}</div>
+                    </div>
+                </div>`;
+                    container.insertAdjacentHTML('beforeend', questionHTML);
+
+                    // Initialize Quill editor for each question
+                    const quill = new Quill(`#editor${question.id}`, {
+                        theme: 'snow'
+                    });
+
+                    // Detect changes in the editor
+                    quill.on('text-change', () => {
+                        changedQuestions.add(question.id); // Track the changed question by ID
+                    });
+
+                    editors[`editor${question.id}`] = quill;
+                });
+
+                // Update pagination info
+                document.getElementById('paginationInfo').innerText = `Page ${currentPage} of ${Math.ceil(totalQuestions / pageSize)}`;
+            };
+
+            // Function to reset download status
+            window.resetDownloadStatus = function (file, id) {
+                const isChecked = document.getElementById(`resetDownload${id}`).checked;
+
+                fetch('/reset-download-status', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ file, id })
+                }).then(response => response.text()).then(data => {
+                    showToast(data);
+                }).catch(error => {
+                    showToast('Error resetting download status', 'danger');
+                });
+            };
+
+            // Function to apply filter
+            window.applyFilter = function () {
+                const showOnlyIncomplete = document.getElementById('filterCheckbox').checked;
+
+                if (showOnlyIncomplete) {
+                    // Filter out questions that are marked as complete
+                    filteredQuestions = questionsData.filter(q => !q['checkedComplete']);
+                } else {
+                    // Show all questions if the checkbox is not checked
+                    filteredQuestions = questionsData;
+                }
+
+                displayQuestions(filteredQuestions); // Display filtered or all questions
+            };
+
+            window.nextPage = function () {
+                if (currentPage * pageSize < totalQuestions) {
+                    currentPage++;
+                    loadSelectedCSV(); // Request the next page from the server
+                }
+            };
+
+            window.prevPage = function () {
+                if (currentPage > 1) {
+                    currentPage--;
+                    loadSelectedCSV(); // Request the previous page from the server
+                }
+            };
+
+            window.saveChanges = function () {
+                const selectedFile = document.getElementById('csvSelector').value;
+                const updatedQuestions = [];
+
+                // Gather changes from the tracked questions
+                changedQuestions.forEach(id => {
+                    const editorContent = editors[`editor${id}`].root.innerHTML;
+                    const questionTitle = document.querySelector(`#editor${id}`).closest('.card').querySelector('.card-header h5').innerText.split(': ')[1];
+                    const isCompleted = document.getElementById(`check${id}`).checked;
+
+                    updatedQuestions.push({
+                        'id': id,
+                        'Question': questionTitle,
+                        'Answer (HTML)': editorContent,
+                        'checkedComplete': isCompleted,
+                        // Reset the isDownloaded status to false to ensure re-download is allowed
+                        'isDownloaded': false
+                    });
+                });
+
+                // Clear the changed questions set after saving
+                changedQuestions.clear();
+
+                if (updatedQuestions.length === 0) {
+                    showToast('No changes to save.', 'info');
+                    return;
+                }
+
+                toggleLoader(true); // Show loader
+                fetch('/save-changes', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ file: selectedFile, changes: updatedQuestions })
+                }).then(response => response.text()).then(data => {
+                    showToast(data, 'success');
+                    toggleLoader(false); // Hide loader
+                }).catch(error => {
+                    showToast('Error saving changes', 'danger');
+                    toggleLoader(false); // Hide loader
+                });
+            };
+
+            window.markAsCompleted = function (file, id) {
+                const isChecked = document.getElementById(`check${id}`).checked;
+                changedQuestions.add(id); // Track the changed question
+
+                fetch('/save-progress', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ file, id: id, completed: isChecked })
+                }).then(response => response.text()).then(data => {
+                    showToast('Progress saved');
+                }).catch(error => {
+                    showToast('Error saving progress', 'danger');
+                });
+            };
+
+            window.downloadCSV = function () {
+                const selectedFile = document.getElementById('csvSelector').value;
+                toggleLoader(true); // Show loader
+
+                fetch(`/export-csv?file=${selectedFile}`)
+                    .then(response => {
+                        if (!response.ok) {
+                            return response.json().then(data => {
+                                showToast(data.message, 'info'); // Show toast with error message
+                                toggleLoader(false); // Hide loader
+                                throw new Error(data.message); // Stop further processing
+                            });
+                        }
+                        return response.blob();
+                    })
+                    .then(blob => {
+                        if (!blob) return; // Exit if no data is returned
+
+                        const url = window.URL.createObjectURL(blob);
+                        const link = document.createElement("a");
+                        link.href = url;
+                        link.setAttribute("download", `${selectedFile}_completed.csv`);
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+
+                        toggleLoader(false); // Hide loader
+                    })
+                    .catch(error => {
+                        console.error('Download error:', error.message);
+                    });
+            };
+
+            window.loadCSVFiles = function () {
+                toggleLoader(true); // Show loader
+                fetch('/list-csv-files').then(response => response.json()).then(files => {
+                    const selector = document.getElementById('csvSelector');
+                    selector.innerHTML = '';
+                    files.forEach(file => {
+                        selector.insertAdjacentHTML('beforeend', `<option value="${file}">${file}</option>`);
+                    });
+                    if (files.length > 0) {
+                        selector.value = files[0]; // Select the first file by default
+                        loadSelectedCSV(); // Automatically load the first file
+                    }
+                    toggleLoader(false); // Hide loader
+                }).catch(error => {
+                    showToast('Error loading file list', 'danger');
+                    toggleLoader(false); // Hide loader
+                });
+            };
+
+            window.toggleLoader = function (show) {
+                const loader = document.getElementById('loader');
+                loader.style.display = show ? 'block' : 'none';
+            };
+
+            window.showToast = function (message, type = 'success') {
+                const toast = document.getElementById('toast');
+                const toastBody = document.getElementById('toast-body');
+                toastBody.innerText = message;
+
+                // Adjust the toast color based on the type
+                if (type === 'success') {
+                    toast.classList.remove('bg-danger');
+                    toast.classList.add('bg-success');
+                } else if (type === 'info') {
+                    toast.classList.remove('bg-success', 'bg-danger');
+                    toast.classList.add('bg-info');
+                } else if (type === 'danger') {
+                    toast.classList.remove('bg-success', 'bg-info');
+                    toast.classList.add('bg-danger');
+                }
+
+                const toastElement = new bootstrap.Toast(toast);
+                toastElement.show();
+            };
+
+            // Load questions on page load
+            loadCSVFiles();
+        });
+    </script>
+</body>
+
+</html>
